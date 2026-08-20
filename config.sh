@@ -148,9 +148,10 @@ MANAGE_SCENE_CONF=1
 SWAPPINESS_OVERRIDE=
 
 # zram 压缩算法偏好：
-#   auto = 内核有 lz4k/lz4kd 就用，没有用原厂（推荐）
+#   lz4kd = 华为高压缩比，接近 zstd 而更快（Paimon 内核推荐，默认）
+#   auto  = 内核有 lz4k/lz4kd 就用（优先 lz4k）
 #   直接填 lzo-rle / lz4 / zstd 等强制指定
-ZRAM_ALGO_PREF=auto
+ZRAM_ALGO_PREF=lz4kd
 
 # 刷入 lz4k 内核模块后，是否开机把 ZRAM 切到 lz4k（0=不切 1=切）
 # 注意：现在的 vendor_boot_lz4k.img 会让内核 panic（见 README），

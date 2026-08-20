@@ -67,6 +67,12 @@ h1 small{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-to
 .path{display:flex;gap:8px;margin-top:10px}
 .path input{flex:1;min-width:0;background:var(--chip);border:1px solid var(--stroke);border-radius:16px;padding:11px 14px;color:var(--txt);font-size:12.5px;outline:none}
 .path button{flex:0 0 74px;border:0;border-radius:16px;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-size:13px;font-weight:700;cursor:pointer}
+/* ---- Scene 配置编辑器字段卡片 ---- */
+.sf{background:var(--chip);border:1px solid var(--stroke);border-radius:18px;padding:12px 14px;margin-bottom:10px;box-sizing:border-box}
+.sf .l code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;font-weight:700;color:var(--acc)}
+.sf .h{font-size:11px;color:var(--sub);line-height:1.55;margin:4px 0 9px;white-space:pre-line;word-break:break-word}
+.sf input,.sf select{width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--stroke);border-radius:14px;padding:10px 12px;color:var(--txt);font-size:14px;outline:none}
+.sf input:focus,.sf select:focus{border-color:var(--acc)}
 .tag{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;margin-left:6px}
 .tag.ok{background:#2fb37f22;color:var(--ok)}
 .tag.warn{background:#e8912d22;color:var(--warn)}
@@ -78,7 +84,7 @@ h1 small{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-to
 /* ---- G2 连续圆角（超贝塞尔 squircle）----
    普通 border-radius=G1（直线+圆弧 曲率突变）；corner-shape:squircle 让曲率平滑过渡。
    全局统一 40px，渐进增强：不支持则忽略回退 border-radius。 */
-.tabs,.card,.stat,.seg,.mode,.actions button,.path button,.row input,.row select{
+.tabs,.card,.stat,.seg,.mode,.actions button,.path button,.row input,.row select,.sf{
   corner-shape: var(--corner-sq);
   border-radius:40px;
 }
@@ -169,6 +175,28 @@ h1 small{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-to
     <div class="note">· 重建会先关闭 swap 再重建启用，期间请勿断电。<br>
       · <b>lz4k / lz4kd</b>：Paimon 内核已内置（华为压缩），实测可切换，推荐 <b>lz4kd</b>。<br>
       · 若下拉框没出现 lz4k/lz4kd，点击“重建 ZRAM”后即会进入 comp_algorithm 生效。</div>
+  </section>
+
+  <section class="card">
+    <h2>Scene 配置编辑（/data/swap_config.conf）</h2>
+    <div class="actions" style="margin-top:0">
+      <button id="btnReloadScene" class="primary" style="flex:0 0 auto;padding:10px 16px">载入当前配置</button>
+    </div>
+    <div id="scene_form"></div>
+    <div class="actions">
+      <button id="btnSaveScene" class="primary">保存到 /data/swap_config.conf</button>
+    </div>
+    <div class="path">
+      <input id="in_sc_path" placeholder="导出到任意路径，如 /sdcard/Download/my_swap.conf">
+      <button id="btnExportScene">导出</button>
+    </div>
+    <div class="path">
+      <input id="in_sc_import" placeholder="从路径导入配置">
+      <button id="btnImportScene">导入</button>
+    </div>
+    <div class="note">· <b>载入</b>：读取当前 /data/swap_config.conf，把注释+参数映射成表单，按注释填写。<br>
+      · <b>保存</b>：把表单值（含注释）整体写回 /data/swap_config.conf，Scene 下次读取即生效。<br>
+      · <b>导出</b>：保存一份副本到任意路径；<b>导入</b>：从路径读入并填到表单（尚未落盘，需再点保存）。</div>
   </section>
 </div>
 
@@ -403,6 +431,100 @@ async function loadCfg(){
   document.body.classList.remove("busy");refresh();
 }
 
+// ===== Scene 配置编辑（/data/swap_config.conf）=====
+let SC_ENTRIES=[];   // [{key, value, help[]}]
+function b64(str){
+  try{const bytes=new TextEncoder().encode(str);let bin="";for(const b of bytes)bin+=String.fromCharCode(b);return btoa(bin);}
+  catch(e){return btoa(unescape(encodeURIComponent(str)));}
+}
+function esc(h){return String(h==null?"":h).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function parseScene(txt){
+  const lines=txt.split(/\r?\n/);const e=[];let help=[];
+  for(const l of lines){
+    const t=l.trim();
+    if(t==="")continue;
+    if(t.startsWith("#")){help.push(l);continue;}
+    const i=l.indexOf("=");
+    if(i>0){const k=l.slice(0,i).trim();let v=l.slice(i+1).replace(/\s+$/,"");e.push({key:k,value:v,help:[...help]});help=[];}
+  }
+  if(help.length)e.push({key:null,value:null,help}); // 保留末尾孤立注释
+  return e;
+}
+function buildScene(e){
+  const out=["# K90 Scene swap 配置（WebUI 生成，Scene 按此应用）"];
+  for(const x of e){
+    if(x.help&&x.help.length)out.push(...x.help);
+    if(x.key!=null)out.push(x.key+"="+x.value);
+    out.push("");
+  }
+  return out.join("\n");
+}
+function renderScene(e){
+  const box=$("scene_form");box.innerHTML="";
+  e.forEach(x=>{
+    const d=document.createElement("div");d.className="sf";
+    if(x.key==null){d.innerHTML="<div class='h'>"+x.help.map(esc).join("<br>")+"</div>";box.appendChild(d);return;}
+    const isBool=/^(true|false)$/i.test(x.value), isInt=/^-?\d+$/.test(x.value);
+    const hlp=x.help.length?"<div class='h'>"+x.help.map(esc).join("<br>")+"</div>":"";
+    let ctl;
+    if(isBool)
+      ctl="<select data-k='"+esc(x.key)+"'><option value='true'"+(x.value.toLowerCase()==="true"?" selected":"")+">true</option><option value='false'"+(x.value.toLowerCase()==="false"?" selected":"")+">false</option></select>";
+    else
+      ctl="<input data-k='"+esc(x.key)+"' "+(isInt?"type='number'":"type='text'")+" value='"+esc(x.value)+"'>";
+    d.innerHTML="<div class='l'><code>"+esc(x.key)+"</code></div>"+hlp+ctl;
+    box.appendChild(d);
+  });
+  SC_ENTRIES=e;
+}
+function collectScene(){
+  const map=new Map();
+  document.querySelectorAll("#scene_form [data-k]").forEach(el=>{map.set(el.getAttribute("data-k"),el.value);});
+  return SC_ENTRIES.map(x=>x.key==null?x:{key:x.key,value:(map.has(x.key)?map.get(x.key):x.value),help:x.help});
+}
+async function loadScene(){
+  document.body.classList.add("busy");
+  const raw=await run("cat /data/swap_config.conf 2>/dev/null");
+  const e=parseScene(raw);
+  renderScene(e);
+  document.body.classList.remove("busy");
+  toast("已载入 "+e.filter(x=>x.key).length+" 项配置");
+}
+// base64 整体写入（含注释，安全）
+async function writeFile(path,content){
+  const b=b64(content||"");
+  return await run("echo '"+b+"' | base64 -d > '"+path+"' && echo OK");
+}
+async function saveScene(){
+  const c=collectScene(),content=buildScene(c);
+  if(!content){toast("内容为空");return;}
+  document.body.classList.add("busy");
+  const r=await writeFile("/data/swap_config.conf",content);
+  document.body.classList.remove("busy");
+  toast(/OK/.test(r)?"已保存到 /data/swap_config.conf":"保存失败");
+  if(/OK/.test(r))await loadScene();
+}
+async function exportScene(){
+  const p=$("in_sc_path").value.trim();
+  if(!p){toast("请填写导出路径");return;}
+  if(p.includes("'")){toast("路径不能包含单引号");return;}
+  document.body.classList.add("busy");
+  const r=await writeFile(p,buildScene(collectScene()));
+  document.body.classList.remove("busy");
+  toast(/OK/.test(r)?"已导出到 "+p:"导出失败（请检查路径/目录）");
+}
+async function importScene(){
+  const p=$("in_sc_import").value.trim();
+  if(!p){toast("请填写导入路径");return;}
+  if(p.includes("'")){toast("路径不能包含单引号");return;}
+  document.body.classList.add("busy");
+  const raw=await run("cat '"+p+"' 2>/dev/null");
+  if(!raw.trim()||(!raw.includes("=")&&!raw.includes("#"))){toast("文件不存在或为空");document.body.classList.remove("busy");return;}
+  const e=parseScene(raw);
+  renderScene(e);
+  document.body.classList.remove("busy");
+  toast("已导入 "+e.filter(x=>x.key).length+" 项，再点【保存】写回 /data/swap_config.conf");
+}
+
 // 事件
 $("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setDetect(b.dataset.v);});
 $("modes").addEventListener("click",e=>{const b=e.target.closest(".mode");if(b)setProfile(parseInt(b.dataset.v,10));});
@@ -412,6 +534,10 @@ $("btnApplyZram").addEventListener("click",applyZram);
 $("btnSaveCfg").addEventListener("click",saveCfg);
 $("btnResetCfg").addEventListener("click",resetCfg);
 $("btnLoadCfg").addEventListener("click",loadCfg);
+$("btnReloadScene").addEventListener("click",loadScene);
+$("btnSaveScene").addEventListener("click",saveScene);
+$("btnExportScene").addEventListener("click",exportScene);
+$("btnImportScene").addEventListener("click",importScene);
 document.querySelectorAll(".tabs button").forEach(b=>{
   b.addEventListener("click",()=>{
     document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
@@ -422,7 +548,7 @@ document.querySelectorAll(".tabs button").forEach(b=>{
 
 (async()=>{
   if(typeof ksu==="undefined"){$("subhead").textContent="请在 KernelSU 管理器内打开本页";toast("未检测到 KernelSU 接口");return;}
-  await refresh();setInterval(refresh,5000);
+  await refresh();await loadScene();setInterval(refresh,5000);
 })();
 </script>
 </body>

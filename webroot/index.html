@@ -99,7 +99,7 @@ h1 small{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-to
 
 <div class="tabs">
   <button data-tab="t1" class="on">调度</button>
-  <button data-tab="t2">SWAP/ZRAM</button>
+  <button data-tab="t2">Scene 配置</button>
   <button data-tab="t3">配置</button>
 </div>
 
@@ -141,42 +141,8 @@ h1 small{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-to
   </section>
 </div>
 
-<!-- ========== 标签2：SWAP / ZRAM ========== -->
+<!-- ========== 标签2：Scene 配置编辑 ========== -->
 <div class="tab" id="t2">
-  <section class="card">
-    <h2>SWAP / ZRAM 状态</h2>
-    <div class="stats">
-      <div class="stat"><div class="k">swappiness</div><div id="z_sw" class="v">—</div></div>
-      <div class="stat"><div class="k">缓存压力</div><div id="z_vfs" class="v">—</div></div>
-      <div class="stat"><div class="k">ZRAM 算法</div><div id="z_algo" class="v" style="font-size:12px">—</div></div>
-      <div class="stat"><div class="k">ZRAM 大小</div><div id="z_size" class="v">—</div></div>
-      <div class="stat"><div class="k">Swap 已用</div><div id="z_used" class="v">—</div></div>
-      <div class="stat"><div class="k">swappiness 持久化</div><div id="z_persist" class="v">—</div></div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>SWAP 参数（立即生效 + 保存配置）</h2>
-    <div class="row"><label>swappiness (0~200)</label><input id="in_sw" type="number" min="0" max="200" placeholder="如 20"></div>
-    <div class="row"><label>缓存压力</label><input id="in_vfs" type="number" placeholder="如 50"></div>
-    <div class="actions">
-      <button id="btnApplySwap" class="primary">应用</button>
-    </div>
-    <div class="note">· swappiness 越低越省电但越容易卡；日常 20 左右均衡。<br>· 应用后同时写入配置，重启仍生效。</div>
-  </section>
-
-  <section class="card">
-    <h2>ZRAM 调整（重建，需几秒）</h2>
-    <div class="row"><label>压缩算法</label><select id="in_algo"></select></div>
-    <div class="row"><label>大小 (GB)</label><input id="in_size" type="number" min="1" max="32" placeholder="如 12"></div>
-    <div class="actions">
-      <button id="btnApplyZram" class="primary">重建 ZRAM</button>
-    </div>
-    <div class="note">· 重建会先关闭 swap 再重建启用，期间请勿断电。<br>
-      · <b>lz4k / lz4kd</b>：Paimon 内核已内置（华为压缩），实测可切换，推荐 <b>lz4kd</b>。<br>
-      · 若下拉框没出现 lz4k/lz4kd，点击“重建 ZRAM”后即会进入 comp_algorithm 生效。</div>
-  </section>
-
   <section class="card">
     <h2>Scene 配置编辑（/data/swap_config.conf）</h2>
     <div class="actions" style="margin-top:0">
@@ -222,13 +188,13 @@ h1 small{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-to
       <button id="btnSaveCfg" class="primary">保存配置</button>
       <button id="btnResetCfg">恢复默认</button>
     </div>
-    <div class="note">· 保存：把上面改动 + SWAP 面板的值写入 user_config.conf，重启生效。<br>· 恢复默认：删除 user_config.conf，回到 config.sh 默认值。</div>
+    <div class="note">· 保存：把触控采样率 + 各档 CPU boost 写入 user_config.conf，重启生效。<br>
+      · SWAP / ZRAM 参数不在本面板管理，请到 <b>Scene 配置</b> 卡里编辑（避免与 Scene 冲突）。恢复默认：删除 user_config.conf，回到 config.sh 默认值。</div>
     <div class="path">
-      <input id="in_loadpath" placeholder="加载外部配置文件路径，如 /sdcard/Download/myswap.conf">
+      <input id="in_loadpath" placeholder="加载外部配置文件路径，如 /sdcard/Download/my.conf">
       <button id="btnLoadCfg">加载</button>
     </div>
-    <div class="note">· 加载外部配置：文件内容为 <b>key=value</b>（每行一个，如 SWAPPINESS_OVERRIDE=30），
-      会把里面的键合并进 user_config.conf 并立即应用 swappiness/vfs。</div>
+    <div class="note">· 加载外部配置：文件内容为 <b>key=value</b>（每行一个，仅接受触控与 CPU boost 类白名单键），合并进 user_config.conf。</div>
   </section>
 </div>
 
@@ -239,7 +205,6 @@ h1 small{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-to
 const MOD="/data/adb/modules/k90_hyperos_tuner";
 const NAMES=["省电","日常","均衡","游戏","极速"];
 let CFG={};   // 当前配置快照（来自状态命令）
-let ZRAM_ALGOS=[];
 
 function $(id){return document.getElementById(id);}
 function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),2200);}
@@ -301,26 +266,9 @@ function render(s){
   $("s_focus").textContent=s.focus||"—";
   const za=parseAlgo(s.algo);
   $("s_zram").textContent=za.cur||"—";
-  $("z_sw").textContent=s.swappiness||"—";
-  $("z_vfs").textContent=s.vfs_cache_pressure||"—";
-  const sup=(s.avail||za.all.join(" ")).split(/\s+/).filter(Boolean).join(" / ");
-  $("z_algo").innerHTML="<b>"+(za.cur||"—")+"</b>"+
-     "<div style='font-size:10px;color:var(--sub);margin-top:3px;line-height:1.6;word-wrap:break-word'>支持: "+(sup||"—")+"</div>";
-  $("z_size").textContent=(s.size_gb?s.size_gb+" GB":"—");
-  $("z_used").textContent=(s.swap_mb?s.swap_mb+" MB":"0 MB");
-  const p=$("z_persist");p.textContent=s.persist==="yes"?"已保存":"未保存";
-  p.className="v tag "+(s.persist==="yes"?"ok":"warn");
   // 高亮模式
   [...$("seg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===(s.detect||"auto")));
   document.querySelectorAll("#modes .mode").forEach(b=>b.classList.toggle("on",parseInt(b.dataset.v,10)===cur));
-  // 填充 ZRAM 算法下拉（保持已选）
-  // 可用算法全集：zram 当前列表 ∪ crypto 动态后端（lz4k/lz4kd），让它们在下拉里可选
-  const avail=(s.avail||"").split(/\s+/).filter(Boolean);
-  ZRAM_ALGOS=avail.length?[...new Set(avail)]:za.all;
-  const sel=$("in_algo");const prev=sel.value;
-  sel.innerHTML=ZRAM_ALGOS.map(a=>'<option value="'+a+'"'+(a===za.cur?" selected":"")+'>'+a+(a===za.cur?"（当前）":"")+'</option>').join("");
-  if(prev&&ZRAM_ALGOS.includes(prev))sel.value=prev;
-  if(!$("in_size").value)$("in_size").value=s.size_gb||"";
   // 配置面板
   if(!CFG.loaded){CFG.loaded=1;
     $("cf_touch_normal").value=s.touch_normal||"240";
@@ -350,20 +298,6 @@ async function setProfile(n){
   toast("已切换到【"+NAMES[n]+"】");document.body.classList.remove("busy");refresh();
 }
 
-// SWAP 应用（立即 + 持久化到 user_config.conf）
-async function applySwap(){
-  const sw=$("in_sw").value, vfs=$("in_vfs").value;
-  if(!sw&&!vfs){toast("请填写要应用的值");return;}
-  document.body.classList.add("busy");
-  let out="";
-  if(sw) out+=await sh("sysctl -w vm.swappiness="+sw+" 2>/dev/null && echo sw_ok");
-  if(vfs) out+=await sh("sysctl -w vm.vfs_cache_pressure="+vfs+" 2>/dev/null && echo vfs_ok");
-  // 持久化：覆盖 user_config.conf 里的这两个键
-  await persistKeys({SWAPPINESS_OVERRIDE:sw||"",VFS_CACHE_PRESSURE:vfs||""});
-  toast("SWAP 参数已应用并保存");
-  document.body.classList.remove("busy");refresh();
-}
-
 // 写 user_config.conf 里指定的 key（保留其它键）
 async function persistKeys(kv){
   // 读出旧文件过滤掉要改的键，再追加新键
@@ -375,19 +309,6 @@ async function persistKeys(kv){
   keep.forEach(l=>{cmd+=";echo '"+l.replace(/'/g,"'\\''")+"' >> $D/user_config.conf";});
   for(const k in kv){if(kv[k]!==undefined&&kv[k]!==null&&kv[k]!=="")cmd+=";echo '"+k+"="+kv[k]+"' >> $D/user_config.conf";}
   await run(cmd);
-}
-
-// ZRAM 重建
-async function applyZram(){
-  if(!ZRAM_DYNAMIC_CTL_SAFE){ZRAM_DYNAMIC_CTL_SAFE=1;}
-  const algo=$("in_algo").value, gb=$("in_size").value;
-  if(!algo||!gb){toast("请选择算法和大小");return;}
-  if(/lz4k|lz4kd/i.test(algo)){toast("已选华为压缩算法 "+algo+"，重建中…");}
-  document.body.classList.add("busy");
-  toast("正在重建 ZRAM，约几秒…");
-  const r=await sh(". $D/zram_manage.sh 2>/dev/null; zram_rebuild '"+algo+"' '"+gb+"'; echo EXIT=$?");
-  toast(/EXIT=0/.test(r)?"ZRAM 重建成功":"ZRAM 重建失败（已回退原设置）");
-  document.body.classList.remove("busy");refresh();
 }
 
 // 保存配置（触控+CPU boost）
@@ -420,13 +341,10 @@ async function loadCfg(){
   if(/ERR|^$/.test(raw.trim())&&!raw.includes("=")){toast("文件不存在或为空");document.body.classList.remove("busy");return;}
   const kv={};
   raw.split("\n").forEach(l=>{l=l.trim();if(!l||l.startsWith("#"))return;const i=l.indexOf("=");if(i>0){const k=l.slice(0,i).trim();const v=l.slice(i+1).trim();if(k)kv[k]=v;}});
-  // 只接受白名单键，防注入
-  const allow=["SWAPPINESS_OVERRIDE","VFS_CACHE_PRESSURE","TOUCH_NORMAL","TOUCH_GAME","TOUCH_GAME_SUPER","P0_BOOST","P1_BOOST","P2_BOOST","P3_BOOST","P4_BOOST","POLL_INTERVAL","BATTERY_SAVE_LEVEL"];
+  // 只接受白名单键（触控 / 档位 CPU boost），SWAP/ZRAM 相关交给 Scene 统一管理，防冲突
+  const allow=["TOUCH_NORMAL","TOUCH_GAME","TOUCH_GAME_SUPER","P0_BOOST","P1_BOOST","P2_BOOST","P3_BOOST","P4_BOOST","POLL_INTERVAL","BATTERY_SAVE_LEVEL"];
   const clean={};Object.keys(kv).forEach(k=>{if(allow.includes(k))clean[k]=kv[k];});
   await persistKeys(clean);
-  // 立即应用 swappiness/vfs
-  if(clean.SWAPPINESS_OVERRIDE)await sh("sysctl -w vm.swappiness="+clean.SWAPPINESS_OVERRIDE+" 2>/dev/null");
-  if(clean.VFS_CACHE_PRESSURE)await sh("sysctl -w vm.vfs_cache_pressure="+clean.VFS_CACHE_PRESSURE+" 2>/dev/null");
   toast("已加载 "+(Object.keys(clean).length)+" 项配置");
   document.body.classList.remove("busy");refresh();
 }
@@ -529,8 +447,6 @@ async function importScene(){
 $("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setDetect(b.dataset.v);});
 $("modes").addEventListener("click",e=>{const b=e.target.closest(".mode");if(b)setProfile(parseInt(b.dataset.v,10));});
 $("btnRefresh").addEventListener("click",refresh);
-$("btnApplySwap").addEventListener("click",applySwap);
-$("btnApplyZram").addEventListener("click",applyZram);
 $("btnSaveCfg").addEventListener("click",saveCfg);
 $("btnResetCfg").addEventListener("click",resetCfg);
 $("btnLoadCfg").addEventListener("click",loadCfg);

@@ -21,12 +21,14 @@
 - 五档性能模式（Balance / 均衡 / 性能 / 电竞 / 极速…，`apply_profile` 统一入口）
 - **触控采样率**自动探测并守护（K90 = Goodix GT9916，240Hz 固定/游戏联动）
 - **Scene 调度配置** 判断与优化（`/data/swap_config.conf`）
-- **ZRAM** 动态重建（换算法/大小，带失败回退）
+- **Scene 配置可视化编辑器**：读取 `/data/swap_config.conf` 并把**注释+参数映射成表单**，按注释填、一键保存回写、导出到任意路径、支持导入（WebUI 内操作，Scene 负责应用）
 - 游戏识别 + 低电量省电
+- **不做 ZRAM / SWAP 即改**：SWAP、ZRAM 参数的读写统一交给 **Scene** 管理，避免模块与 Scene 抢占同一份 `swap_config.conf` 而起冲突；WebUI 里只做这只读状态查看 + 配置编辑界。
 
 ### 3. 配套 WebUI（KSU/APatch 控制台）
 - 高斯模糊玻璃拟态卡片、G2 超贝塞尔圆角、A/B 槽信息、触控采样率实时显示
 - 支持亮/暗色切换
+- **Scene 配置编辑卡**：读当前配置→表单→保存/导出/导入
 
 ---
 
@@ -69,7 +71,7 @@ fastboot flash init_boot_a init_boot_a.img     # 原厂 init_boot（KSU）
 
 1. 已刷 Paimon（含 KernelSU）或使用原厂+init_boot KSU
 2. 把本仓库的 `k90_hyperos_tuner/` 打包为 zip 用 Magisk/KSU 管理器刷入
-3. 打开 WebUI 设置触控采样率、性能档、ZRAM
+3. 打开 WebUI 设置触控采样率、性能档；SWAP/ZRAM 只需在 **Scene 配置** 卡里改 `/data/swap_config.conf`（模块不做即改，交给 Scene 应用，避免冲突）
 
 配置文件：`config.sh`（全中文注释），改完重启生效。
 
@@ -79,8 +81,7 @@ fastboot flash init_boot_a init_boot_a.img     # 原厂 init_boot（KSU）
 
 - **LZ4K / LZ4KD 内核已内置**（`/proc/crypto` 可查），ARMv8 NEON 加速有效。
 - **它们就是可用的 zram 压缩后端**：zram 的 `comp_algorithm` **初始列表并不完整**，lz4k/lz4kd 这类动态后端不预先显示，但**写入即激活**。实测 `echo lz4kd > /sys/block/zram0/comp_algorithm` 成功后，`comp_algorithm` 变为 `… [lz4kd]`（方括号即当前生效算法）。
-- 因此**模块已修复检测**：`algo_supported()` 会额外查 `/proc/crypto`，`zram_avail_algos()` 会在下拉里并入 lz4k/lz4kd。
-- **推荐 lz4kd**（华为高压缩比、接近 zstd 而更快）。持久化方式同作者做法：把 Scene 的 `/data/swap_config.conf` 里 `comp_algorithm=` 改成 `lz4kd`。
+- **推荐 lz4kd**（华为高压缩比、接近 zstd 而更快）。模块已修复检测（`/proc/crypto`），持久化方式同作者做法：在 WebUI 的 **Scene 配置** 卡里把 `/data/swap_config.conf` 的 `comp_algorithm=` 改成 `lz4kd`，Scene 负责应用。
 
 > 自测：`su -c cat /sys/block/zram0/comp_algorithm`，看到 `[lz4kd]` 就是生效了。
 

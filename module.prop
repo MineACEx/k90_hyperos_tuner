@@ -1,0 +1,7 @@
+id=k90_hyperos_tuner
+name=K90 HyperOS 多模式调优
+version=v3.2
+versionCode=5
+author=GKI-opt
+description=针对 REDMI K90 (HyperOS4/Android17)：全局触控采样率（日常240/游戏480/极速480，固件配置 bind）+ 5 档调度 + KSU WebUI（手动/自动换模式 + SWAP/ZRAM 管理 + 配置保存/加载）。软兼容官方调度，系统less，卸载即还原。
+webui=true

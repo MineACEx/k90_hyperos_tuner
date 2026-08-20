@@ -1,0 +1,15 @@
+# 运行时临时文件（设备上生成，不进仓库）
+tuner.log
+*_log.txt
+.detect
+.current
+.profile
+.touch_backup
+.touch_nodes
+.conf_tmp
+swap_config.conf.bak
+user_config.conf
+odm/
+*.zip
+.kernel.stock
+verify_v3.sh

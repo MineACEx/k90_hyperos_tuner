@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>K90 多模式调优</title>
+<style>
+:root{
+  --bg1:#eef2f7; --bg2:#dfe7f2;
+  --card:rgba(255,255,255,.72); --stroke:rgba(255,255,255,.85);
+  --txt:#1c2733; --sub:#5b6b7c;
+  --acc:#4f8dff; --acc2:#7c5cff; --ok:#2fb37f; --warn:#e8912d; --bad:#e04a5f;
+  --chip:#ffffff88; --shadow:0 12px 30px rgba(60,80,120,.18);
+  --corner-sq:squircle;   /* G2 连续圆角：超贝塞尔平滑（Chrome 139+） */
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg1:#0e1218; --bg2:#151b26; --card:rgba(30,38,52,.62);
+    --stroke:rgba(255,255,255,.10); --txt:#e8edf5; --sub:#93a1b5;
+    --chip:#ffffff10; --shadow:0 12px 30px rgba(0,0,0,.5);
+  }
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  font-family:-apple-system,"PingFang SC","MiSans","HarmonyOS Sans",Roboto,sans-serif;
+  background:linear-gradient(160deg,var(--bg1),var(--bg2));background-attachment:fixed;
+  color:var(--txt);min-height:100vh;padding:24px 18px calc(40px + env(safe-area-inset-bottom));
+}
+header{display:flex;align-items:center;gap:14px;margin-bottom:4px}
+.logo{width:46px;height:46px;border-radius:30%;flex:none;background:linear-gradient(135deg,var(--acc),var(--acc2));
+  display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:20px;box-shadow:0 8px 20px rgba(90,120,255,.35)}
+h1{font-size:19px;font-weight:700}
+h1 small{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-top:2px}
+.tabs{display:flex;gap:6px;margin-top:16px;background:var(--chip);padding:5px;border-radius:24px;border:1px solid var(--stroke)}
+.tabs button{flex:1;border:0;background:transparent;color:var(--sub);font-size:13.5px;font-weight:600;padding:10px 4px;border-radius:18px;cursor:pointer;transition:all .22s ease}
+.tabs button.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;box-shadow:0 6px 16px rgba(90,120,255,.35)}
+.tab{display:none}
+.tab.show{display:block}
+.card{background:var(--card);border:1px solid var(--stroke);border-radius:28px;padding:18px;margin-top:14px;
+  box-shadow:var(--shadow);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%)}
+.card h2{font-size:12px;font-weight:600;color:var(--sub);letter-spacing:1.2px;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:var(--chip);border-radius:20px;padding:12px 14px}
+.stat .k{font-size:10.5px;color:var(--sub);margin-bottom:4px}
+.stat .v{font-size:14.5px;font-weight:700;word-break:break-all}
+.stat .v.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;color:#fff;background:linear-gradient(135deg,var(--acc),var(--acc2))}
+.seg{display:flex;background:var(--chip);border-radius:20px;padding:4px;gap:4px}
+.seg button{flex:1;border:0;background:transparent;color:var(--sub);font-size:13px;font-weight:600;padding:9px 4px;border-radius:16px;cursor:pointer;transition:all .22s ease}
+.seg button.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;box-shadow:0 6px 16px rgba(90,120,255,.35)}
+.modes{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.mode{border:1px solid var(--stroke);background:var(--chip);border-radius:22px;padding:13px 2px 11px;cursor:pointer;text-align:center;transition:all .2s ease}
+.mode:active{transform:scale(.94)}
+.mode .t{font-size:13px;font-weight:700}
+.mode .h{font-size:10px;color:var(--sub);margin-top:3px}
+.mode.on{border-color:transparent;color:#fff;background:linear-gradient(150deg,var(--acc),var(--acc2));box-shadow:0 8px 20px rgba(90,120,255,.4)}
+.mode.on .h{color:rgba(255,255,255,.85)}
+.row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.row label{flex:0 0 118px;font-size:13px;color:var(--sub);font-weight:500}
+.row input,.row select{flex:1;min-width:0;background:var(--chip);border:1px solid var(--stroke);border-radius:16px;padding:11px 14px;color:var(--txt);font-size:14px;outline:none}
+.row input:focus,.row select:focus{border-color:var(--acc)}
+.actions{display:flex;gap:10px;margin-top:14px}
+.actions button{flex:1;border:0;border-radius:20px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;background:var(--chip);color:var(--txt);border:1px solid var(--stroke);transition:all .2s ease}
+.actions button:active{transform:scale(.96)}
+.actions .primary{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;border:0;box-shadow:0 8px 18px rgba(90,120,255,.35)}
+.note{font-size:11px;color:var(--sub);line-height:1.7;margin-top:12px;padding-top:10px;border-top:1px dashed var(--stroke)}
+.note b{color:var(--txt)}
+.path{display:flex;gap:8px;margin-top:10px}
+.path input{flex:1;min-width:0;background:var(--chip);border:1px solid var(--stroke);border-radius:16px;padding:11px 14px;color:var(--txt);font-size:12.5px;outline:none}
+.path button{flex:0 0 74px;border:0;border-radius:16px;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-size:13px;font-weight:700;cursor:pointer}
+.tag{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;margin-left:6px}
+.tag.ok{background:#2fb37f22;color:var(--ok)}
+.tag.warn{background:#e8912d22;color:var(--warn)}
+.tag.bad{background:#e04a5f22;color:var(--bad)}
+#toast{position:fixed;left:50%;bottom:calc(30px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+  background:rgba(20,26,40,.92);color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:all .28s ease;z-index:99;max-width:86%;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.busy{opacity:.55;pointer-events:none}
+/* ---- G2 连续圆角（超贝塞尔 squircle）----
+   普通 border-radius=G1（直线+圆弧 曲率突变）；corner-shape:squircle 让曲率平滑过渡。
+   全局统一 40px，渐进增强：不支持则忽略回退 border-radius。 */
+.tabs,.card,.stat,.seg,.mode,.actions button,.path button,.row input,.row select{
+  corner-shape: var(--corner-sq);
+  border-radius:40px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">K</div>
+  <h1>K90 多模式调优<small id="subhead">加载中…</small></h1>
+</header>
+
+<div class="tabs">
+  <button data-tab="t1" class="on">调度</button>
+  <button data-tab="t2">SWAP/ZRAM</button>
+  <button data-tab="t3">配置</button>
+</div>
+
+<!-- ========== 标签1：调度 ========== -->
+<div class="tab show" id="t1">
+  <section class="card">
+    <h2>当前状态</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">当前档位</div><div id="s_cur" class="v">—</div></div>
+      <div class="stat"><div class="k">识别方式</div><div id="s_detect" class="v">—</div></div>
+      <div class="stat"><div class="k">触控采样率</div><div id="s_touch" class="v">—</div></div>
+      <div class="stat"><div class="k">电量</div><div id="s_batt" class="v">—</div></div>
+      <div class="stat"><div class="k">前台应用</div><div id="s_focus" class="v" style="font-size:11.5px">—</div></div>
+      <div class="stat"><div class="k">ZRAM 算法</div><div id="s_zram" class="v" style="font-size:12px">—</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>识别方式</h2>
+    <div class="seg" id="seg">
+      <button data-v="auto">自动识别</button>
+      <button data-v="manual">手动模式</button>
+      <button data-v="off">关闭</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>切换模式</h2>
+    <div class="modes" id="modes">
+      <button class="mode" data-v="0"><div class="t">省电</div><div class="h">240Hz</div></button>
+      <button class="mode" data-v="1"><div class="t">日常</div><div class="h">240Hz</div></button>
+      <button class="mode" data-v="2"><div class="t">均衡</div><div class="h">240Hz</div></button>
+      <button class="mode" data-v="3"><div class="t">游戏</div><div class="h">480Hz</div></button>
+      <button class="mode" data-v="4"><div class="t">极速</div><div class="h">480Hz</div></button>
+    </div>
+    <div class="actions">
+      <button id="btnRefresh" class="primary">刷新状态</button>
+    </div>
+  </section>
+</div>
+
+<!-- ========== 标签2：SWAP / ZRAM ========== -->
+<div class="tab" id="t2">
+  <section class="card">
+    <h2>SWAP / ZRAM 状态</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">swappiness</div><div id="z_sw" class="v">—</div></div>
+      <div class="stat"><div class="k">缓存压力</div><div id="z_vfs" class="v">—</div></div>
+      <div class="stat"><div class="k">ZRAM 算法</div><div id="z_algo" class="v" style="font-size:12px">—</div></div>
+      <div class="stat"><div class="k">ZRAM 大小</div><div id="z_size" class="v">—</div></div>
+      <div class="stat"><div class="k">Swap 已用</div><div id="z_used" class="v">—</div></div>
+      <div class="stat"><div class="k">swappiness 持久化</div><div id="z_persist" class="v">—</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>SWAP 参数（立即生效 + 保存配置）</h2>
+    <div class="row"><label>swappiness (0~200)</label><input id="in_sw" type="number" min="0" max="200" placeholder="如 20"></div>
+    <div class="row"><label>缓存压力</label><input id="in_vfs" type="number" placeholder="如 50"></div>
+    <div class="actions">
+      <button id="btnApplySwap" class="primary">应用</button>
+    </div>
+    <div class="note">· swappiness 越低越省电但越容易卡；日常 20 左右均衡。<br>· 应用后同时写入配置，重启仍生效。</div>
+  </section>
+
+  <section class="card">
+    <h2>ZRAM 调整（重建，需几秒）</h2>
+    <div class="row"><label>压缩算法</label><select id="in_algo"></select></div>
+    <div class="row"><label>大小 (GB)</label><input id="in_size" type="number" min="1" max="32" placeholder="如 12"></div>
+    <div class="actions">
+      <button id="btnApplyZram" class="primary">重建 ZRAM</button>
+    </div>
+    <div class="note">· 重建会先关闭 swap 再重建启用，期间请勿断电。<br>
+      · <b>lz4k / lz4kd</b>：Paimon 内核已内置（华为压缩），实测可切换，推荐 <b>lz4kd</b>。<br>
+      · 若下拉框没出现 lz4k/lz4kd，点击“重建 ZRAM”后即会进入 comp_algorithm 生效。</div>
+  </section>
+</div>
+
+<!-- ========== 标签3：配置 ========== -->
+<div class="tab" id="t3">
+  <section class="card">
+    <h2>触控采样率（全局，重启生效）</h2>
+    <div class="row"><label>日常档</label><select id="cf_touch_normal"><option value="240">240 Hz</option><option value="480">480 Hz</option></select></div>
+    <div class="row"><label>游戏档</label><select id="cf_touch_game"><option value="480">480 Hz</option><option value="240">240 Hz</option></select></div>
+    <div class="row"><label>极速档</label><select id="cf_touch_super"><option value="480">480 Hz</option><option value="240">240 Hz</option></select></div>
+    <div class="note">· 修改后“保存配置”，重启后官方触控驱动按此值跑（bind 固件配置）。<br>· 硬件只有 240/480 两档。</div>
+  </section>
+
+  <section class="card">
+    <h2>各档 CPU 激进程度（0~200）</h2>
+    <div class="row"><label>游戏档 boost</label><input id="cf_p3_boost" type="number" min="0" max="200" placeholder="150"></div>
+    <div class="row"><label>极速档 boost</label><input id="cf_p4_boost" type="number" min="0" max="200" placeholder="200"></div>
+  </section>
+
+  <section class="card">
+    <h2>配置保存 / 加载</h2>
+    <div class="actions">
+      <button id="btnSaveCfg" class="primary">保存配置</button>
+      <button id="btnResetCfg">恢复默认</button>
+    </div>
+    <div class="note">· 保存：把上面改动 + SWAP 面板的值写入 user_config.conf，重启生效。<br>· 恢复默认：删除 user_config.conf，回到 config.sh 默认值。</div>
+    <div class="path">
+      <input id="in_loadpath" placeholder="加载外部配置文件路径，如 /sdcard/Download/myswap.conf">
+      <button id="btnLoadCfg">加载</button>
+    </div>
+    <div class="note">· 加载外部配置：文件内容为 <b>key=value</b>（每行一个，如 SWAPPINESS_OVERRIDE=30），
+      会把里面的键合并进 user_config.conf 并立即应用 swappiness/vfs。</div>
+  </section>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+const MOD="/data/adb/modules/k90_hyperos_tuner";
+const NAMES=["省电","日常","均衡","游戏","极速"];
+let CFG={};   // 当前配置快照（来自状态命令）
+let ZRAM_ALGOS=[];
+
+function $(id){return document.getElementById(id);}
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),2200);}
+
+function ksuExec(cmd){
+  return new Promise((resolve,reject)=>{
+    if(typeof ksu==="undefined"||!ksu.exec){reject(new Error("NO_KSU"));return;}
+    const name="cb_"+Date.now()+"_"+Math.floor(Math.random()*1e6);
+    window[name]=(errno,stdout,stderr)=>{delete window[name];resolve({errno,stdout,stderr});};
+    try{ksu.exec(cmd,"{}",name);}catch(e){delete window[name];reject(e);}
+  });
+}
+async function run(cmd){
+  try{const r=await ksuExec(cmd);return r.errno===0?r.stdout:(r.stderr||"");}
+  catch(e){return e.message==="NO_KSU"?"ERR_NO_KSU":"";}
+}
+function sh(cmd){
+  // 在模块环境里执行：加载配置 + 指定命令
+  return run(". "+MOD+"/config.sh; "+cmd);
+}
+
+const STATUS_CMD =
+  'D='+MOD+';. $D/config.sh 2>/dev/null;'+
+  'echo "modver=$(grep \'^version=\' $D/module.prop | cut -d= -f2)";'+
+  'echo "ksu=$(getprop ro.kernelsu.version 2>/dev/null)";'+
+  'echo "detect=$(cat $D/.detect 2>/dev/null)";'+
+  'echo "cur=$(cat $D/.current 2>/dev/null)";'+
+  'echo "touch=$(. $D/touch.sh 2>/dev/null; get_touch_fps)";'+
+  'echo "batt=$(dumpsys battery 2>/dev/null | grep -m1 level: | sed \'s/.*level: *\\([0-9]*\\).*/\\1/\')";'+
+  'echo "focus=$(dumpsys window windows 2>/dev/null | grep -m1 mCurrentFocus | sed \'s/.*{\\([^/]*\\)\\/.*/\\1/\')";'+
+  'echo "touch_normal=$TOUCH_NORMAL";'+
+  'echo "touch_game=$TOUCH_GAME";'+
+  'echo "touch_game_super=$TOUCH_GAME_SUPER";'+
+  'echo "p3_boost=$P3_BOOST";'+
+  'echo "p4_boost=$P4_BOOST";'+
+  '. $D/zram_manage.sh 2>/dev/null;'+
+  'zram_status;'+
+  'echo "persist=$([ -f $D/user_config.conf ] && echo yes || echo no)"';
+
+function parseStatus(s){
+  const o={};s.split("\n").forEach(l=>{const i=l.indexOf("=");if(i>0)o[l.slice(0,i)]=l.slice(i+1);});
+  return o;
+}
+function parseAlgo(str){
+  // "lzo [lzo-rle] lz4 zstd" → [{name,cur}]；[] 是当前算法
+  const m=(str||"").match(/\[([^\]]+)\]/);const cur=m?m[1]:null;
+  const all=(str||"").replace(/\[|\]/g," ").split(/\s+/).filter(Boolean);
+  return {cur, all:[...new Set(all)]};
+}
+
+function render(s){
+  $("subhead").textContent="v"+s.modver+" · KSU "+s.ksu;
+  const cur=parseInt(s.cur,10);
+  const c=$("s_cur");
+  if(cur>=0&&cur<=4){c.textContent=NAMES[cur];c.classList.add("pill");}else{c.textContent="—";c.classList.remove("pill");}
+  $("s_detect").textContent=(s.detect==="manual"?"手动":(s.detect==="off"?"关闭":"自动"))||"(默认)";
+  $("s_touch").textContent=(s.touch&&s.touch!=="N/A")?s.touch:"未探测";
+  $("s_batt").textContent=s.batt?s.batt+"%":"—";
+  $("s_focus").textContent=s.focus||"—";
+  const za=parseAlgo(s.algo);
+  $("s_zram").textContent=za.cur||"—";
+  $("z_sw").textContent=s.swappiness||"—";
+  $("z_vfs").textContent=s.vfs_cache_pressure||"—";
+  $("z_algo").textContent=(s.avail||za.all.join(" "))+"  ← "+za.cur;
+  $("z_size").textContent=(s.size_gb?s.size_gb+" GB":"—");
+  $("z_used").textContent=(s.swap_mb?s.swap_mb+" MB":"0 MB");
+  const p=$("z_persist");p.textContent=s.persist==="yes"?"已保存":"未保存";
+  p.className="v tag "+(s.persist==="yes"?"ok":"warn");
+  // 高亮模式
+  [...$("seg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===(s.detect||"auto")));
+  document.querySelectorAll("#modes .mode").forEach(b=>b.classList.toggle("on",parseInt(b.dataset.v,10)===cur));
+  // 填充 ZRAM 算法下拉（保持已选）
+  // 可用算法全集：zram 当前列表 ∪ crypto 动态后端（lz4k/lz4kd），让它们在下拉里可选
+  const avail=(s.avail||"").split(/\s+/).filter(Boolean);
+  ZRAM_ALGOS=avail.length?[...new Set(avail)]:za.all;
+  const sel=$("in_algo");const prev=sel.value;
+  sel.innerHTML=ZRAM_ALGOS.map(a=>'<option value="'+a+'"'+(a===za.cur?" selected":"")+'>'+a+(a===za.cur?"（当前）":"")+'</option>').join("");
+  if(prev&&ZRAM_ALGOS.includes(prev))sel.value=prev;
+  if(!$("in_size").value)$("in_size").value=s.size_gb||"";
+  // 配置面板
+  if(!CFG.loaded){CFG.loaded=1;
+    $("cf_touch_normal").value=s.touch_normal||"240";
+    $("cf_touch_game").value=s.touch_game||"480";
+    $("cf_touch_super").value=s.touch_game_super||"480";
+    $("cf_p3_boost").value=s.p3_boost||"150";
+    $("cf_p4_boost").value=s.p4_boost||"200";
+  }
+}
+
+async function refresh(){
+  const s=parseStatus(await run(STATUS_CMD));
+  CFG=s; render(s);
+}
+
+// 模式/识别
+async function setDetect(v){
+  document.body.classList.add("busy");
+  await run("echo "+v+" > "+MOD+"/.detect 2>/dev/null");
+  toast(v==="manual"?"已切到手动模式":(v==="off"?"已关闭自动识别":"已开启自动识别"));
+  document.body.classList.remove("busy");refresh();
+}
+async function setProfile(n){
+  document.body.classList.add("busy");
+  const cmd='D='+MOD+';echo manual > $D/.detect;echo '+n+' > $D/.profile;. $D/config.sh;. $D/profiles.sh;. $D/touch.sh;apply_profile '+n+' 2>/dev/null;echo '+n+' > $D/.current';
+  await run(cmd);
+  toast("已切换到【"+NAMES[n]+"】");document.body.classList.remove("busy");refresh();
+}
+
+// SWAP 应用（立即 + 持久化到 user_config.conf）
+async function applySwap(){
+  const sw=$("in_sw").value, vfs=$("in_vfs").value;
+  if(!sw&&!vfs){toast("请填写要应用的值");return;}
+  document.body.classList.add("busy");
+  let out="";
+  if(sw) out+=await sh("sysctl -w vm.swappiness="+sw+" 2>/dev/null && echo sw_ok");
+  if(vfs) out+=await sh("sysctl -w vm.vfs_cache_pressure="+vfs+" 2>/dev/null && echo vfs_ok");
+  // 持久化：覆盖 user_config.conf 里的这两个键
+  await persistKeys({SWAPPINESS_OVERRIDE:sw||"",VFS_CACHE_PRESSURE:vfs||""});
+  toast("SWAP 参数已应用并保存");
+  document.body.classList.remove("busy");refresh();
+}
+
+// 写 user_config.conf 里指定的 key（保留其它键）
+async function persistKeys(kv){
+  // 读出旧文件过滤掉要改的键，再追加新键
+  const D=MOD;
+  let lines=await run("cat "+D+"/user_config.conf 2>/dev/null");
+  const keep=[];
+  lines.split("\n").forEach(l=>{const i=l.indexOf("=");if(i>0){const k=l.slice(0,i);if(!(k in kv))keep.push(l);}});
+  let cmd="D="+D+";[ -f $D/user_config.conf ] && cp $D/user_config.conf $D/user_config.conf.bak;echo > $D/user_config.conf";
+  keep.forEach(l=>{cmd+=";echo '"+l.replace(/'/g,"'\\''")+"' >> $D/user_config.conf";});
+  for(const k in kv){if(kv[k]!==undefined&&kv[k]!==null&&kv[k]!=="")cmd+=";echo '"+k+"="+kv[k]+"' >> $D/user_config.conf";}
+  await run(cmd);
+}
+
+// ZRAM 重建
+async function applyZram(){
+  if(!ZRAM_DYNAMIC_CTL_SAFE){ZRAM_DYNAMIC_CTL_SAFE=1;}
+  const algo=$("in_algo").value, gb=$("in_size").value;
+  if(!algo||!gb){toast("请选择算法和大小");return;}
+  if(/lz4k|lz4kd/i.test(algo)){toast("已选华为压缩算法 "+algo+"，重建中…");}
+  document.body.classList.add("busy");
+  toast("正在重建 ZRAM，约几秒…");
+  const r=await sh(". $D/zram_manage.sh 2>/dev/null; zram_rebuild '"+algo+"' '"+gb+"'; echo EXIT=$?");
+  toast(/EXIT=0/.test(r)?"ZRAM 重建成功":"ZRAM 重建失败（已回退原设置）");
+  document.body.classList.remove("busy");refresh();
+}
+
+// 保存配置（触控+CPU boost）
+async function saveCfg(){
+  document.body.classList.add("busy");
+  const kv={
+    TOUCH_NORMAL:$("cf_touch_normal").value,
+    TOUCH_GAME:$("cf_touch_game").value,
+    TOUCH_GAME_SUPER:$("cf_touch_super").value,
+    P3_BOOST:$("cf_p3_boost").value,
+    P4_BOOST:$("cf_p4_boost").value
+  };
+  await persistKeys(kv);
+  toast("配置已保存（重启生效）");
+  document.body.classList.remove("busy");refresh();
+}
+// 恢复默认
+async function resetCfg(){
+  document.body.classList.add("busy");
+  await run("rm -f "+MOD+"/user_config.conf");
+  toast("已恢复默认配置");
+  document.body.classList.remove("busy");refresh();
+}
+// 加载外部配置（key=value 文件）
+async function loadCfg(){
+  const p=$("in_loadpath").value.trim();
+  if(!p){toast("请填写配置文件路径");return;}
+  document.body.classList.add("busy");
+  const raw=await run("cat '"+p+"' 2>/dev/null");
+  if(/ERR|^$/.test(raw.trim())&&!raw.includes("=")){toast("文件不存在或为空");document.body.classList.remove("busy");return;}
+  const kv={};
+  raw.split("\n").forEach(l=>{l=l.trim();if(!l||l.startsWith("#"))return;const i=l.indexOf("=");if(i>0){const k=l.slice(0,i).trim();const v=l.slice(i+1).trim();if(k)kv[k]=v;}});
+  // 只接受白名单键，防注入
+  const allow=["SWAPPINESS_OVERRIDE","VFS_CACHE_PRESSURE","TOUCH_NORMAL","TOUCH_GAME","TOUCH_GAME_SUPER","P0_BOOST","P1_BOOST","P2_BOOST","P3_BOOST","P4_BOOST","POLL_INTERVAL","BATTERY_SAVE_LEVEL"];
+  const clean={};Object.keys(kv).forEach(k=>{if(allow.includes(k))clean[k]=kv[k];});
+  await persistKeys(clean);
+  // 立即应用 swappiness/vfs
+  if(clean.SWAPPINESS_OVERRIDE)await sh("sysctl -w vm.swappiness="+clean.SWAPPINESS_OVERRIDE+" 2>/dev/null");
+  if(clean.VFS_CACHE_PRESSURE)await sh("sysctl -w vm.vfs_cache_pressure="+clean.VFS_CACHE_PRESSURE+" 2>/dev/null");
+  toast("已加载 "+(Object.keys(clean).length)+" 项配置");
+  document.body.classList.remove("busy");refresh();
+}
+
+// 事件
+$("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setDetect(b.dataset.v);});
+$("modes").addEventListener("click",e=>{const b=e.target.closest(".mode");if(b)setProfile(parseInt(b.dataset.v,10));});
+$("btnRefresh").addEventListener("click",refresh);
+$("btnApplySwap").addEventListener("click",applySwap);
+$("btnApplyZram").addEventListener("click",applyZram);
+$("btnSaveCfg").addEventListener("click",saveCfg);
+$("btnResetCfg").addEventListener("click",resetCfg);
+$("btnLoadCfg").addEventListener("click",loadCfg);
+document.querySelectorAll(".tabs button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("show"));
+    $(b.dataset.tab).classList.add("show");
+  });
+});
+
+(async()=>{
+  if(typeof ksu==="undefined"){$("subhead").textContent="请在 KernelSU 管理器内打开本页";toast("未检测到 KernelSU 接口");return;}
+  await refresh();setInterval(refresh,5000);
+})();
+</script>
+</body>
+</html>

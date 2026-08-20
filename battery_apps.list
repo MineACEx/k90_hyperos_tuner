@@ -1,0 +1,5 @@
+# 省电白名单：这些应用在前台时自动切到「省电档(0)」
+# 每行一个包名，# 开头是注释
+# 例：
+# com.android.systemui
+# com.miui.notes
